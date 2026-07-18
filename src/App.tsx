@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
 import {
   ArrowDownRight,
@@ -9,7 +9,6 @@ import {
   House,
   Grid2X2,
   MapPin,
-  Menu,
   MessageCircle,
   Play,
   Plus,
@@ -25,8 +24,19 @@ const sizes = ['S', 'M', 'L'] as const
 type Filter = 'all' | Category | 'favorites'
 
 const reveal = {
-  hidden: { opacity: 0, y: 36 },
+  hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
+}
+
+const tickerItems: { label: string; filter: Filter }[] = [
+  { label: 'BIKINIS', filter: 'bikini' },
+  { label: 'BEACHWEAR', filter: 'all' },
+  { label: 'SUN KISSED', filter: 'tejido' },
+  { label: 'FEEL GOOD', filter: 'clasico' },
+]
+
+function haptic(duration = 10) {
+  if ('vibrate' in navigator) navigator.vibrate(duration)
 }
 
 function Flower({ className = '' }: { className?: string }) {
@@ -59,17 +69,19 @@ function ProductCard({
       className="product-card"
     >
       <div className="product-media">
-        <motion.img whileHover={{ scale: 1.055 }} transition={{ duration: 0.7 }} src={product.image} alt={`Bikini ${product.name}`} loading="lazy" />
+        <img src={product.image} alt={`Bikini ${product.name}`} loading="lazy" />
         <span className="product-badge">{product.badge}</span>
-        <button className={`heart-button ${favorite ? 'active' : ''}`} type="button" onClick={onFavorite} aria-label={`Guardar ${product.name}`} aria-pressed={favorite}>
-          <Heart size={17} fill={favorite ? 'currentColor' : 'none'} />
+        <button className={`heart-button ${favorite ? 'active' : ''}`} type="button" onPointerDown={() => haptic(8)} onClick={onFavorite} aria-label={`Guardar ${product.name}`} aria-pressed={favorite}>
+          <motion.span key={favorite ? 'saved' : 'unsaved'} initial={{ scale: 0.72 }} animate={{ scale: [0.72, 1.24, 1] }} transition={{ duration: 0.36 }}>
+            <Heart size={17} fill={favorite ? 'currentColor' : 'none'} />
+          </motion.span>
         </button>
-        <motion.button whileTap={{ scale: 0.86 }} className="add-button" type="button" onClick={onAdd} aria-label={`Agregar ${product.name}, talla ${selectedSize}`}>
+        <motion.button whileTap={{ scale: 0.9 }} className="add-button" type="button" onPointerDown={() => haptic(12)} onClick={onAdd} aria-label={`Agregar ${product.name}, talla ${selectedSize}`}>
           <Plus size={20} />
         </motion.button>
       </div>
       <div className="product-info">
-        <div className="product-heading"><h3>{product.name}</h3><strong>S/ {product.price}</strong></div>
+        <div className="product-heading"><h3>{product.name}<ArrowUpRight className="product-arrow" size={15} /></h3><strong>S/ {product.price}</strong></div>
         <div className="product-options">
           <div className="size-options" aria-label={`Talla de ${product.name}`}>
             {sizes.map(size => (
@@ -114,12 +126,19 @@ function ReelCard({ reel, index }: { reel: (typeof reels)[number]; index: number
 function App() {
   const reduceMotion = useReducedMotion()
   const { scrollYProgress } = useScroll()
+  const heroRef = useRef<HTMLElement>(null)
+  const { scrollYProgress: heroScrollProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
   const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 28, restDelta: 0.001 })
-  const heroImageY = useTransform(scrollYProgress, [0, 0.32], [0, -42])
+  const heroImageY = useTransform(heroScrollProgress, [0, 1], [0, -84])
+  const heroBackdropY = useTransform(heroScrollProgress, [0, 1], [0, -24])
+  const heroCopyY = useTransform(heroScrollProgress, [0, 0.24, 1], [0, 0, -22])
+  const heroCopyOpacity = useTransform(heroScrollProgress, [0, 0.72, 1], [1, 1, 0.18])
   const [filter, setFilter] = useState<Filter>('all')
   const [cartOpen, setCartOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [headerScrolled, setHeaderScrolled] = useState(false)
+  const [tickerPaused, setTickerPaused] = useState(false)
+  const [cartBump, setCartBump] = useState(false)
   const [toast, setToast] = useState('')
   const [cart, setCart] = useState<CartItem[]>(() => JSON.parse(localStorage.getItem('adris-cart') || '[]') as CartItem[])
   const [favorites, setFavorites] = useState<number[]>(() => JSON.parse(localStorage.getItem('adris-favorites') || '[]') as number[])
@@ -144,6 +163,11 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [toast])
   useEffect(() => {
+    if (!cartBump) return
+    const timer = window.setTimeout(() => setCartBump(false), 520)
+    return () => window.clearTimeout(timer)
+  }, [cartBump])
+  useEffect(() => {
     const updateHeader = () => setHeaderScrolled(window.scrollY > 24)
     updateHeader()
     window.addEventListener('scroll', updateHeader, { passive: true })
@@ -158,6 +182,7 @@ function App() {
       return [...current, { id: product.id, size, quantity: 1 }]
     })
     setToast(`${product.name} · Talla ${size}`)
+    setCartBump(true)
   }
 
   function removeProduct(id: number, size: string) {
@@ -179,11 +204,11 @@ function App() {
 
       <header className={`site-header ${headerScrolled ? 'scrolled' : ''}`}>
         <motion.nav className="nav shell" aria-label="Navegación principal" initial={reduceMotion ? false : { opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}>
-          <a className="brand" href="#inicio">Adris<Flower /></a>
+          <a className="brand" href="#inicio"><motion.span className="brand-mark" initial={reduceMotion ? false : { rotate: -4, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} transition={{ delay: 0.12, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>Adris<Flower /></motion.span></a>
           <div className="nav-links"><a href="#coleccion">Colección</a><a href="#club">El club</a><a href="#tiktok">TikTok</a><a href="#tienda">Tienda</a></div>
           <div className="nav-actions">
-            <button className="menu-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu /></button>
-            <motion.button whileTap={{ scale: 0.92 }} className="bag-button" type="button" onClick={() => setCartOpen(true)} aria-label={`Abrir bolsa, ${cartCount} productos`}>
+            <button className={`menu-button ${menuOpen ? 'open' : ''}`} type="button" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><span className="menu-icon" aria-hidden="true"><i /><i /></span></button>
+            <motion.button animate={cartBump && !reduceMotion ? { scale: [1, 1.16, 0.96, 1], rotate: [0, -5, 4, 0] } : { scale: 1, rotate: 0 }} transition={{ duration: 0.48 }} whileTap={{ scale: 0.92 }} className="bag-button" type="button" onClick={() => setCartOpen(true)} aria-label={`Abrir bolsa, ${cartCount} productos`}>
               <ShoppingBag size={18} /><span>Mi bolsa</span><b>{cartCount}</b>
             </motion.button>
           </div>
@@ -191,37 +216,50 @@ function App() {
       </header>
 
       <main>
-        <section id="inicio" className="hero shell">
-          <div className="hero-intro">
+        <section ref={heroRef} id="inicio" className="hero shell">
+          <motion.div className="hero-intro" style={{ y: reduceMotion ? 0 : heroCopyY, opacity: reduceMotion ? 1 : heroCopyOpacity }}>
             <motion.p variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.12 }} className="eyebrow">WELCOME TO ADRIS</motion.p>
             <motion.h1 variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.15, duration: 0.75 }}>
-              <span>Demasiado tú</span>
-              <span className="hero-title-bridge">para ser</span>
+              <span className="hero-title-desktop">Demasiado tú</span>
+              <span className="hero-title-mobile">Demasiado</span>
+              <span className="hero-title-bridge"><i className="hero-title-mobile-word">tú </i>para ser</span>
               <em className="hero-title-accent">básica.</em>
             </motion.h1>
-          </div>
-          <div className="hero-details">
-            <motion.p variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.28 }} className="hero-lead">Bikinis con color, actitud y el fit que te hace sentir invencible. Diseñados para celebrar tu forma de ser.</motion.p>
+          </motion.div>
+          <motion.div className="hero-details" style={{ y: reduceMotion ? 0 : heroCopyY, opacity: reduceMotion ? 1 : heroCopyOpacity }}>
+            <motion.p variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.28 }} className="hero-lead"><span className="hero-lead-desktop">Bikinis con color, actitud y el fit que te hace sentir invencible. Diseñados para celebrar tu forma de ser.</span><span className="hero-lead-mobile">Color, actitud y un fit hecho para ti.</span></motion.p>
             <motion.div variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.34 }} className="hero-actions">
-              <a className="button dark" href="#coleccion">Encontrar mi bikini <ArrowRight size={18} /></a>
+              <a className="button dark" href="#coleccion" onPointerDown={() => haptic(10)}>Encontrar mi bikini <ArrowRight size={18} /></a>
               <a className="play-link" href={tiktokUrl} target="_blank" rel="noreferrer"><span><Play size={14} fill="currentColor" /></span> Ver el mood</a>
             </motion.div>
-            <motion.div variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.42 }} className="hero-proof">
+            <motion.div variants={reveal} initial={reduceMotion ? false : 'hidden'} animate="visible" transition={{ delay: 0.42 }} className="hero-proof" aria-label="Calificación 4.9 de 5. Más de 1,200 chicas son parte del club.">
               <div className="avatar-stack" aria-hidden="true"><img src="/product-3.jpg" alt="" /><img src="/product-5.jpg" alt="" /><img src="/product-7.jpg" alt="" /><img src="/product-2.jpg" alt="" /></div>
-              <div className="proof-rating"><div><strong>4.9</strong><span className="stars">★★★★★</span></div><p><strong>+1,200 chicas ya</strong><br />son parte del club.</p></div>
+              <div className="proof-rating" aria-hidden="true">
+                <div>
+                  <span className="stars">{Array.from({ length: 5 }, (_, index) => <motion.i key={index} initial={reduceMotion ? false : { opacity: 0, y: 7, scale: 0.65 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.48 + index * 0.1, duration: 0.28 }}>★</motion.i>)}</span>
+                  <motion.strong initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.03, duration: 0.35 }}>4.9</motion.strong>
+                </div>
+                <motion.p initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2, duration: 0.4 }}><strong>+1,200 chicas ya</strong><br />son parte del club.</motion.p>
+              </div>
             </motion.div>
-          </div>
+          </motion.div>
 
           <motion.div className="hero-art" initial={reduceMotion ? false : { opacity: 0, scale: 0.96, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.22, ease: [0.16, 1, 0.3, 1] }}>
-            <div className="hero-blob" />
+            <motion.div className="hero-blob" style={{ y: reduceMotion ? 0 : heroBackdropY }} />
             <div className="hero-photo"><motion.img style={{ y: reduceMotion ? 0 : heroImageY }} src="/MODELOADRI-hero.png" alt="Modelo luciendo un bikini rosa y blanco de Adris" fetchPriority="high" /></div>
             <motion.div className="hero-new-badge" animate={reduceMotion ? undefined : { y: [0, -7, 0], rotate: [-3, 0, -3] }} transition={{ repeat: Infinity, duration: 4.2 }}><strong>NEW</strong><span>Colección</span><small>Verano '26</small></motion.div>
           </motion.div>
         </section>
 
-        <div className="ticker" aria-hidden="true"><div><span>BIKINIS</span><Flower /><span>BEACHWEAR</span><Flower /><span>SUN KISSED</span><Flower /><span>FEEL GOOD</span><Flower /><span>BIKINIS</span><Flower /><span>BEACHWEAR</span><Flower /><span>SUN KISSED</span><Flower /><span>FEEL GOOD</span><Flower /></div></div>
+        <nav className={`ticker ${tickerPaused ? 'paused' : ''}`} aria-label="Categorías destacadas">
+          <div className="ticker-track">
+            {[0, 1].map(group => <div className="ticker-group" key={group} aria-hidden={group === 1}>
+              {tickerItems.map(item => <span className="ticker-item" key={`${group}-${item.label}`}><button type="button" tabIndex={group === 1 ? -1 : 0} onPointerDown={() => haptic(8)} onClick={() => { setTickerPaused(true); setFilter(item.filter); document.getElementById('coleccion')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }) }}>{item.label}</button><Flower /></span>)}
+            </div>)}
+          </div>
+        </nav>
 
-        <section className="collection-stories shell" aria-labelledby="stories-title">
+        <motion.section className="collection-stories shell" aria-labelledby="stories-title" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.16 }} transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}>
           <div className="stories-heading"><h2 id="stories-title">Explora nuestras colecciones</h2><a href="#coleccion">Ver todas <ArrowRight size={14} /></a></div>
           <div className="stories-grid">
             {[
@@ -231,11 +269,11 @@ function App() {
             ].map((story, index) => (
               <motion.a key={story.name} href="#coleccion" className="story-card" onClick={() => setFilter(index === 1 ? 'clasico' : 'bikini')} whileHover={{ y: -6 }} whileTap={{ scale: 0.98 }}>
                 <img src={story.image} alt={`Colección ${story.name}`} loading="lazy" />
-                <span><small>{story.note}</small><strong>{story.name}</strong></span>
+                <span><small>{story.note}</small><strong>{story.name}</strong><i className="story-arrow"><ArrowUpRight size={18} /></i></span>
               </motion.a>
             ))}
           </div>
-        </section>
+        </motion.section>
 
         <section id="coleccion" className="collection section shell">
           <motion.div className="section-heading" variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true }}>
@@ -267,7 +305,7 @@ function App() {
           </motion.div>
         </section>
 
-        <section id="club" className="manifesto section">
+        <motion.section id="club" className="manifesto section" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.12 }} transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}>
           <div className="manifesto-photo"><img src="/editorial-inclusive.jpg" alt="Mujer disfrutando un día de playa" loading="lazy" /><span>REAL BODIES<br />REAL SUMMER</span></div>
           <div className="manifesto-copy">
             <p className="eyebrow">EL MANIFIESTO ADRIS</p>
@@ -277,36 +315,36 @@ function App() {
               <div className="manifesto-stats"><div><strong>70+</strong><span>colores</span></div><div><strong>4.9</strong><span>experiencia</span></div><div><strong>100%</strong><span>actitud</span></div></div>
             </div>
           </div>
-        </section>
+        </motion.section>
 
-        <section id="tiktok" className="social-section section shell">
+        <motion.section id="tiktok" className="social-section section shell" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.1 }} transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}>
           <div className="social-title">
             <div><p className="eyebrow">ADRIS EN MOVIMIENTO</p><h2>Del feed<br />a la <em>playa.</em></h2></div>
             <a className="tiktok-profile" href={tiktokUrl} target="_blank" rel="noreferrer"><span><Play size={15} fill="currentColor" /></span><div><small>SÍGUENOS EN TIKTOK</small><strong>@adrisoficial_</strong></div><ArrowUpRight /></a>
           </div>
           <div className="reels-grid">{reels.map((reel, index) => <ReelCard key={reel.id} reel={reel} index={index} />)}</div>
           <p className="video-note"><Sparkles size={14} /> La sección acepta videos verticales MP4: agrega <code>videoSrc</code> a cualquier reel para reproducirlo automáticamente.</p>
-        </section>
+        </motion.section>
 
-        <section className="experience section shell">
+        <motion.section className="experience section shell" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.1 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>
           <div className="experience-card">
             <img src="/editorial-tropical.jpg" alt="Costa tropical" loading="lazy" />
             <div className="experience-shade" />
             <div className="experience-copy"><p className="eyebrow">YOUR SUMMER ERA</p><h2>Más sol.<br />Más color.<br /><em>Más tú.</em></h2><a className="button lime" href="#coleccion">Comprar el mood <ArrowDownRight /></a></div>
             <span className="experience-side">COAST · COLOR · CONFIDENCE</span>
           </div>
-        </section>
+        </motion.section>
 
-        <section id="tienda" className="store section shell">
+        <motion.section id="tienda" className="store section shell" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.1 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>
           <div className="store-image"><img src="/tienda.jpeg" alt="Tienda Adris en Trujillo" loading="lazy" /><span><i /> Estamos aquí</span></div>
           <div className="store-copy"><p className="eyebrow">PRUÉBATE EL MOOD</p><h2>Ven al<br /><em>Beach Club.</em></h2><p>Combina modelos, descubre nuevos ingresos y recibe asesoría para encontrar el fit que se sienta tuyo.</p><address><MapPin size={18} /><div><small>ENCUÉNTRANOS EN</small><strong>Centro Comercial YA<br />Trujillo, Perú</strong></div></address><div className="store-actions"><a className="button light" href={tiktokUrl} target="_blank" rel="noreferrer">Cómo llegar <ArrowUpRight /></a><a className="circle-button" href="https://wa.me/?text=Hola%20Adris%2C%20quiero%20visitar%20la%20tienda" target="_blank" rel="noreferrer" aria-label="Consultar por WhatsApp"><MessageCircle /></a></div></div>
-        </section>
+        </motion.section>
       </main>
 
-      <footer className="footer">
+      <motion.footer className="footer" variants={reveal} initial={reduceMotion ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.08 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>
         <div className="shell footer-grid"><div><a className="brand footer-brand" href="#inicio">Adris<Flower /></a><p>Demasiado tú para ser básica.</p></div><div className="footer-links"><a href="#coleccion">Colección</a><a href="#club">El club</a><a href="#tiktok">TikTok</a><a href="#tienda">Tienda</a></div><div className="footer-links"><a href={tiktokUrl} target="_blank" rel="noreferrer">TikTok ↗</a><a href="#">Instagram ↗</a><a href="https://www.pexels.com/" target="_blank" rel="noreferrer">Fotos: Pexels ↗</a></div><div className="footer-note"><span>TRUJILLO · PERÚ</span><small>© 2026 ADRIS BEACH CLUB</small></div></div>
         <div className="footer-word">ADRIS<Flower /></div>
-      </footer>
+      </motion.footer>
 
       <nav className="mobile-dock" aria-label="Acciones rápidas">
         <a className="dock-home" href="#inicio"><span><House size={18} /></span><small>Inicio</small></a>
